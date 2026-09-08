@@ -1,4 +1,3 @@
-
 import os
 import json
 
@@ -168,13 +167,23 @@ async def generate_response(
     latitude: float | None = None,
     longitude: float | None = None,
     conversation_history: list[dict] | None = None,
+    user_memories: list[str] | None = None,
 ) -> str:
+
+    # -----------------------------------------------------
+    # INITIALIZE MEMORY / HISTORY
+    # -----------------------------------------------------
 
     if conversation_history is None:
         conversation_history = []
 
+    if user_memories is None:
+        user_memories = []
+
+    # Keep short-term conversation bounded.
+    # This prevents the context from growing indefinitely.
     conversation_history = conversation_history[-10:]
-    
+
     # -----------------------------------------------------
     # DEVICE LOCATION
     # -----------------------------------------------------
@@ -308,14 +317,42 @@ async def generate_response(
             content = item["content"]
 
             if role == "user":
+
                 conversation_context += (
                     f"User: {content}\n"
                 )
 
             elif role == "assistant":
+
                 conversation_context += (
                     f"NOVA: {content}\n"
                 )
+
+    # -----------------------------------------------------
+    # BUILD LONG-TERM MEMORY CONTEXT
+    # -----------------------------------------------------
+
+    memory_context = ""
+
+    if user_memories:
+
+        memory_context = (
+            "\n\nLONG-TERM USER MEMORY:\n"
+        )
+
+        for memory in user_memories:
+
+            memory_context += (
+                f"- {memory}\n"
+            )
+
+        memory_context += (
+            "\nUse these memories only when they are "
+            "relevant to the user's current request. "
+            "Do not mention the memory system. "
+            "Do not unnecessarily reveal or repeat "
+            "stored personal information.\n"
+        )
 
     # -----------------------------------------------------
     # INITIAL REQUEST
@@ -323,11 +360,15 @@ async def generate_response(
 
     response = client.responses.create(
         model="gpt-5.6-luna",
+
         instructions=(
             instructions
             + conversation_context
+            + memory_context
         ),
+
         input=message,
+
         tools=tools,
     )
 
@@ -502,11 +543,16 @@ async def generate_response(
 
         response = client.responses.create(
             model="gpt-5.6-luna",
+
             instructions=(
                 "You are NOVA, a mobile voice assistant.\n\n"
 
                 "Use the returned tool information to answer "
                 "the user's original question naturally.\n\n"
+
+                "You may also use the recent conversation and "
+                "long-term user memory provided in the original "
+                "request when relevant.\n\n"
 
                 "RESPONSE LENGTH:\n"
                 "Keep the answer very short because NOVA "
@@ -540,7 +586,11 @@ async def generate_response(
                 "Keep the response natural, concise, and "
                 "conversational."
             ),
+
             previous_response_id=response.id,
+
             input=tool_outputs,
+
             tools=tools,
         )
+

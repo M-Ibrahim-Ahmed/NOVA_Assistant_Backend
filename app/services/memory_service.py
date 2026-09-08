@@ -1,9 +1,19 @@
 import json
-import os
+from pathlib import Path
 from typing import List
 
 
-MEMORY_FILE = "data/nova_memory.json"
+# =========================================================
+# MEMORY STORAGE PATH
+# =========================================================
+
+# Project root:
+# C:\Users\MuhammadIbrahim\nova_backend
+BASE_DIR = Path(__file__).resolve().parents[2]
+
+# Persistent memory file:
+# C:\Users\MuhammadIbrahim\nova_backend\data\nova_memory.json
+MEMORY_FILE = BASE_DIR / "data" / "nova_memory.json"
 
 MAX_MEMORIES_PER_USER = 50
 
@@ -19,15 +29,14 @@ class MemoryService:
 
     def _ensure_storage(self) -> None:
 
-        directory = os.path.dirname(MEMORY_FILE)
+        # Create the data directory if it does not exist.
+        MEMORY_FILE.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
-        if directory:
-            os.makedirs(
-                directory,
-                exist_ok=True,
-            )
-
-        if not os.path.exists(MEMORY_FILE):
+        # Create the memory file if it does not exist.
+        if not MEMORY_FILE.exists():
 
             with open(
                 MEMORY_FILE,

@@ -3,127 +3,151 @@ from uuid import uuid4
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from app.models.capability import CapabilityResult
+from app.models.capability import CapabilityRequest
+from app.services.ai_service import continue_after_capability
 from app.services.ai_service import generate_response
 from app.services.conversation_service import conversation_service
-from app.services.memory_extractor import memory_extractor
-from app.services.memory_service import memory_service
-from app.services.memory_retriever import memory_retriever
+from app.services.profile_service import profile_service
 
 
 router = APIRouter(prefix="/api")
 
 
 # =========================================================
-# REQUEST MODEL
+# CHAT REQUEST
 # =========================================================
 
 class ChatRequest(BaseModel):
 
     message: str
 
-    # Long-term user identity
     user_id: str
 
-    # Device location
-    latitude: float | None = None
-    longitude: float | None = None
-
-    # Short-term conversation identity
     conversation_id: str | None = None
 
 
 # =========================================================
-# CHAT ENDPOINT
+# CHAT
 # =========================================================
 
 @router.post("/chat")
-async def chat(request: ChatRequest):
+async def chat(
+    request: ChatRequest,
+):
+
+    print("\n")
+    print("========================================")
+    print("CHAT REQUEST RECEIVED")
+    print("========================================")
+    print("USER ID:", request.user_id)
+    print("MESSAGE:", request.message)
+    print(
+        "CONVERSATION ID:",
+        request.conversation_id,
+    )
+    print("========================================")
+
 
     # -----------------------------------------------------
-    # CREATE CONVERSATION ID IF NEEDED
+    # CONVERSATION
     # -----------------------------------------------------
 
-    conversation_id = request.conversation_id
+    conversation_id = (
+        request.conversation_id
+    )
 
     if not conversation_id:
-        conversation_id = str(uuid4())
 
-    # -----------------------------------------------------
-    # GET SHORT-TERM CONVERSATION HISTORY
-    # -----------------------------------------------------
+        conversation_id = str(
+            uuid4()
+        )
 
     history = conversation_service.get_history(
         conversation_id
     )
 
+
     # -----------------------------------------------------
-    # GET EXISTING LONG-TERM MEMORIES
+    # PROFILE
     # -----------------------------------------------------
 
-    memories = memory_service.get_memories(
+    profile = profile_service.get_profile(
         request.user_id
     )
 
-    # -----------------------------------------------------
-    # EXTRACT NEW MEMORIES FROM USER MESSAGE
-    # -----------------------------------------------------
+    print("\n")
+    print("******** PROFILE DEBUG ********")
+    print(profile.model_dump())
+    print("********************************")
 
-    new_memories = memory_extractor.extract(
-        request.message
-    )
 
     # -----------------------------------------------------
-    # SAVE NEW MEMORIES
+    # AI
     # -----------------------------------------------------
 
-    for memory in new_memories:
+    result = await generate_response(
 
-        memory_service.add_memory(
-            user_id=request.user_id,
-            memory=memory,
-        )
-
-    # -----------------------------------------------------
-    # REFRESH MEMORIES
-    #
-    # This allows NOVA to use a newly learned memory
-    # during the same request.
-    # -----------------------------------------------------
-
-    if new_memories:
-
-        memories = memory_service.get_memories(
-            request.user_id
-        )
-
-    # -----------------------------------------------------
-    # RETRIEVE ONLY RELEVANT LONG-TERM MEMORIES
-    #
-    # Instead of sending every stored memory to the AI,
-    # the local retriever selects only memories relevant
-    # to the current user message.
-    # -----------------------------------------------------
-
-    relevant_memories = memory_retriever.retrieve(
         message=request.message,
-        memories=memories,
-        max_results=5,
-    )
 
-    # -----------------------------------------------------
-    # GENERATE NOVA RESPONSE
-    # -----------------------------------------------------
-
-    response = await generate_response(
-        message=request.message,
-        latitude=request.latitude,
-        longitude=request.longitude,
         conversation_history=history,
-        user_memories=relevant_memories,
+
+        user_profile=profile.model_dump(),
     )
 
+
     # -----------------------------------------------------
-    # STORE USER MESSAGE
+    # CAPABILITY REQUEST
+    # -----------------------------------------------------
+
+    if isinstance(
+        result,
+        CapabilityRequest,
+    ):
+
+        print("\n")
+        print("******** CAPABILITY REQUEST ********")
+        print(
+            "REQUEST ID:",
+            result.request_id,
+        )
+        print(
+            "CAPABILITY:",
+            result.capability,
+        )
+        print(
+            "REASON:",
+            result.reason,
+        )
+        print("************************************")
+
+
+        return {
+            "type": "capability_request",
+
+            "conversation_id":
+                conversation_id,
+
+            "request_id":
+                result.request_id,
+
+            "capability":
+                result.capability,
+
+            "reason":
+                result.reason,
+        }
+
+
+    # -----------------------------------------------------
+    # NORMAL RESPONSE
+    # -----------------------------------------------------
+
+    response_text = result
+
+
+    # -----------------------------------------------------
+    # SAVE CONVERSATION
     # -----------------------------------------------------
 
     conversation_service.add_message(
@@ -132,21 +156,69 @@ async def chat(request: ChatRequest):
         content=request.message,
     )
 
-    # -----------------------------------------------------
-    # STORE NOVA RESPONSE
-    # -----------------------------------------------------
-
     conversation_service.add_message(
         session_id=conversation_id,
         role="assistant",
-        content=response,
+        content=response_text,
     )
 
-    # -----------------------------------------------------
-    # RETURN RESPONSE
-    # -----------------------------------------------------
 
     return {
-        "response": response,
-        "conversation_id": conversation_id,
+
+        "type": "response",
+
+        "response":
+            response_text,
+
+        "conversation_id":
+            conversation_id,
+    }
+
+
+# =========================================================
+# CAPABILITY RESULT
+# =========================================================
+
+@router.post("/chat/capability-result")
+async def capability_result(
+    request: CapabilityResult,
+):
+
+    print("\n")
+    print("========================================")
+    print("CAPABILITY RESULT RECEIVED")
+    print("========================================")
+    print(
+        "REQUEST ID:",
+        request.request_id,
+    )
+    print(
+        "CAPABILITY:",
+        request.capability,
+    )
+    print(
+        "DATA:",
+        request.data,
+    )
+    print("========================================")
+
+
+    # -----------------------------------------------------
+    # CONTINUE AI
+    # -----------------------------------------------------
+
+    response = await continue_after_capability(
+
+        request_id=request.request_id,
+
+        capability_data=request.data,
+    )
+
+
+    return {
+
+        "type": "response",
+
+        "response":
+            response,
     }

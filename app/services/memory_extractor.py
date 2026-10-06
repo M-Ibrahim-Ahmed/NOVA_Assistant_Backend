@@ -4,10 +4,6 @@ from typing import List
 
 class MemoryExtractor:
 
-    # =====================================================
-    # EXTRACT MEMORIES
-    # =====================================================
-
     def extract(
         self,
         message: str,
@@ -20,13 +16,14 @@ class MemoryExtractor:
 
         memories = []
 
-        # -------------------------------------------------
+        # =================================================
         # NAME
-        # -------------------------------------------------
+        # =================================================
 
         name_match = re.search(
             r"\b(?:my name is|call me)\s+"
-            r"([A-Za-z][A-Za-z\s'-]{1,40})",
+            r"([A-Za-z][A-Za-z\s'-]{1,40}?)"
+            r"(?:[.!?,]|$)",
             message,
             re.IGNORECASE,
         )
@@ -42,9 +39,9 @@ class MemoryExtractor:
                     f"User's name is {name}."
                 )
 
-        # -------------------------------------------------
+        # =================================================
         # LIKES
-        # -------------------------------------------------
+        # =================================================
 
         like_match = re.search(
             r"\b(?:i like|i love|i enjoy)\s+"
@@ -64,12 +61,13 @@ class MemoryExtractor:
                     f"User likes {thing}."
                 )
 
-        # -------------------------------------------------
+        # =================================================
         # DISLIKES
-        # -------------------------------------------------
+        # =================================================
 
         dislike_match = re.search(
-            r"\b(?:i dislike|i hate|i don't like|i do not like)\s+"
+            r"\b(?:i dislike|i hate|i don't like|"
+            r"i do not like)\s+"
             r"(.+?)(?:[.!?]|$)",
             message,
             re.IGNORECASE,
@@ -86,12 +84,13 @@ class MemoryExtractor:
                     f"User dislikes {thing}."
                 )
 
-        # -------------------------------------------------
+        # =================================================
         # PROFESSION / ROLE
-        # -------------------------------------------------
+        # =================================================
 
         role_match = re.search(
-            r"\b(?:i am a|i'm a|i work as a|i work as an)\s+"
+            r"\b(?:i am a|i'm a|i work as a|"
+            r"i work as an|i work as)\s+"
             r"(.+?)(?:[.!?]|$)",
             message,
             re.IGNORECASE,
@@ -108,13 +107,28 @@ class MemoryExtractor:
                     f"User works as {role}."
                 )
 
-        # -------------------------------------------------
+        # =================================================
         # LOCATION
-        # -------------------------------------------------
+        # =================================================
+        #
+        # Examples:
+        #
+        # I live in Islamabad.
+        # I moved to Lahore.
+        # I've moved to Dubai.
+        # I have moved to Karachi.
+        # I'm from Taxila.
+        #
+        # The non-greedy capture prevents extra words
+        # from being accidentally included.
+        # =================================================
 
         location_match = re.search(
-            r"\b(?:i live in|i'm from|i am from)\s+"
-            r"(.+?)(?:[.!?]|$)",
+            r"\b(?:i live in|i'm from|i am from|"
+            r"i moved to|i've moved to|"
+            r"i have moved to)\s+"
+            r"([A-Za-z][A-Za-z\s'-]*?)"
+            r"(?:[.!?,]|$)",
             message,
             re.IGNORECASE,
         )
@@ -125,18 +139,32 @@ class MemoryExtractor:
                 location_match.group(1)
             )
 
-            if location:
+            # Ignore obviously invalid location values.
+            invalid_locations = {
+                "currently",
+                "here",
+                "there",
+                "now",
+            }
+
+            if (
+                location
+                and location.lower()
+                not in invalid_locations
+            ):
+
                 memories.append(
                     f"User lives in {location}."
                 )
 
-        # -------------------------------------------------
+        # =================================================
         # FAVORITE
-        # -------------------------------------------------
+        # =================================================
 
         favorite_match = re.search(
             r"\bmy favou?rite\s+"
-            r"(.+?)\s+is\s+(.+?)(?:[.!?]|$)",
+            r"(.+?)\s+is\s+"
+            r"(.+?)(?:[.!?]|$)",
             message,
             re.IGNORECASE,
         )
@@ -152,14 +180,16 @@ class MemoryExtractor:
             )
 
             if category and value:
+
                 memories.append(
-                    f"User's favorite {category} is {value}."
+                    f"User's favorite "
+                    f"{category} is {value}."
                 )
 
         return memories
 
     # =====================================================
-    # CLEAN EXTRACTED VALUE
+    # CLEAN VALUE
     # =====================================================
 
     def _clean_value(
@@ -169,10 +199,10 @@ class MemoryExtractor:
 
         value = value.strip()
 
-        # Remove unnecessary trailing punctuation.
-        value = value.rstrip(".,!?")
+        value = value.rstrip(
+            ".,!?"
+        )
 
-        # Remove accidental whitespace.
         value = re.sub(
             r"\s+",
             " ",

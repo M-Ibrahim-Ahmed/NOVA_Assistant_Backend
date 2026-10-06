@@ -1,0 +1,15 @@
+{
+  "name": "Ibrahim",
+  "phone": null,
+  "email": null,
+  "home_location": {
+    "city": "Taxila",
+    "country": "Pakistan",
+    "address": null
+  },
+  "occupation": null,
+  "preferences": {
+    "favorite_sport": "Football",
+    "favorite_programming_language": "Python"
+  }
+}

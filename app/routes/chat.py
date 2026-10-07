@@ -176,26 +176,26 @@ async def chat(
             user_id=request.user_id,
         )
 
-    return {
+        return {
 
-        "type":
-            "capability_request",
+            "type":
+                "capability_request",
 
-        "conversation_id":
-            conversation_id,
+            "conversation_id":
+                conversation_id,
 
-        "request_id":
-            result.request_id,
+            "request_id":
+                result.request_id,
 
-        "capability":
-            result.capability,
+            "capability":
+                result.capability,
 
-        "reason":
-            result.reason,
+            "reason":
+                result.reason,
 
-        "parameters":
-            result.parameters,
-    }
+            "parameters":
+                result.parameters,
+        }
 
     # -----------------------------------------------------
     # NORMAL RESPONSE

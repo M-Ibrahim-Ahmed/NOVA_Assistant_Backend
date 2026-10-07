@@ -280,7 +280,7 @@ class MemoryRetriever:
             "that",
             "this",
             "with",
-            "from",
+            #"from",
             "have",
             "has",
             "was",

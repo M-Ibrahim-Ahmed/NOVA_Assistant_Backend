@@ -3,6 +3,11 @@
     "User's name is Ibrahim.",
     "User likes football.",
     "User's favorite programming language is python.",
-    "User's favorite sports is football."
+    "User's favorite sports is football.",
+    "User lives in Islamabad."
+  ],
+  "memory-update-test": [
+    "User lives in Lahore.",
+    "User likes football."
   ]
 }

@@ -1,3 +1,4 @@
+
 import json
 from pathlib import Path
 from typing import List
@@ -29,13 +30,11 @@ class MemoryService:
 
     def _ensure_storage(self) -> None:
 
-        # Create the data directory if it does not exist.
         MEMORY_FILE.parent.mkdir(
             parents=True,
             exist_ok=True,
         )
 
-        # Create the memory file if it does not exist.
         if not MEMORY_FILE.exists():
 
             with open(
@@ -113,7 +112,7 @@ class MemoryService:
         )
 
     # =====================================================
-    # ADD MEMORY
+    # ADD / UPDATE MEMORY
     # =====================================================
 
     def add_memory(
@@ -135,18 +134,144 @@ class MemoryService:
 
         existing = memories[user_id]
 
-        # Avoid exact duplicates.
+        # -------------------------------------------------
+        # DETERMINE MEMORY CATEGORY
+        # -------------------------------------------------
+
+        category = self._get_memory_category(
+            memory
+        )
+
+        # -------------------------------------------------
+        # REPLACE CONFLICTING MEMORY
+        # -------------------------------------------------
+
+        if category:
+
+            updated_memories = []
+
+            for old_memory in existing:
+
+                old_category = (
+                    self._get_memory_category(
+                        old_memory
+                    )
+                )
+
+                if old_category == category:
+
+                    # Remove the old fact because the
+                    # new fact belongs to the same
+                    # single-value category.
+                    continue
+
+                updated_memories.append(
+                    old_memory
+                )
+
+            existing = updated_memories
+
+        # -------------------------------------------------
+        # AVOID EXACT DUPLICATES
+        # -------------------------------------------------
+
         if memory in existing:
             return
 
+        # -------------------------------------------------
+        # ADD NEW MEMORY
+        # -------------------------------------------------
+
         existing.append(memory)
 
-        # Keep storage bounded.
+        # -------------------------------------------------
+        # LIMIT MEMORY COUNT
+        # -------------------------------------------------
+
         memories[user_id] = existing[
             -MAX_MEMORIES_PER_USER:
         ]
 
         self._save(memories)
+
+    # =====================================================
+    # MEMORY CATEGORY
+    # =====================================================
+
+    def _get_memory_category(
+        self,
+        memory: str,
+    ) -> str | None:
+
+        normalized = memory.lower().strip()
+
+        # -------------------------------------------------
+        # NAME
+        # -------------------------------------------------
+
+        if (
+            normalized.startswith(
+                "user's name is"
+            )
+            or normalized.startswith(
+                "users name is"
+            )
+        ):
+            return "name"
+
+        # -------------------------------------------------
+        # LOCATION
+        # -------------------------------------------------
+
+        if (
+            normalized.startswith(
+                "user lives in"
+            )
+            or normalized.startswith(
+                "user is from"
+            )
+        ):
+            return "location"
+
+        # -------------------------------------------------
+        # PROFESSION
+        # -------------------------------------------------
+
+        if normalized.startswith(
+            "user works as"
+        ):
+            return "work"
+
+        # -------------------------------------------------
+        # FAVORITE
+        # -------------------------------------------------
+
+        if normalized.startswith(
+            "user's favorite"
+        ) or normalized.startswith(
+            "users favorite"
+        ):
+            return "favorite"
+
+        # -------------------------------------------------
+        # DISLIKE
+        # -------------------------------------------------
+
+        if normalized.startswith(
+            "user dislikes"
+        ):
+            return "dislike"
+
+        # -------------------------------------------------
+        # LIKE
+        # -------------------------------------------------
+
+        if normalized.startswith(
+            "user likes"
+        ):
+            return "like"
+
+        return None
 
     # =====================================================
     # DELETE MEMORY
@@ -199,3 +324,4 @@ class MemoryService:
 # =========================================================
 
 memory_service = MemoryService()
+

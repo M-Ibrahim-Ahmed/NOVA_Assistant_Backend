@@ -217,6 +217,52 @@ search_tool = {
 }
 
 
+
+# =========================================================
+# FLASH LIGHT TOOL
+# =========================================================
+
+flashlight_tool = {
+    "type": "function",
+    "name": "control_flashlight",
+    "description": (
+        "Turn the Android device flashlight on or off. "
+        "Use when the user explicitly asks to control the flashlight."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["on", "off"],
+                "description": "Desired flashlight state."
+            }
+        },
+        "required": ["action"],
+        "additionalProperties": False
+    }
+}
+
+# =========================================================
+# BATTERY TOOL
+# =========================================================
+
+battery_tool = {
+    "type": "function",
+    "name": "get_battery_status",
+    "description": (
+        "Read the Android device's current battery percentage "
+        "and charging status."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False
+    }
+}
+
+
+
 # =========================================================
 # ALL TOOLS
 # =========================================================
@@ -224,6 +270,8 @@ search_tool = {
 tools = [
     current_location_tool,
     open_app_tool,
+    flashlight_tool,
+    battery_tool,
     time_tool,
     weather_tool,
     location_tool,
@@ -348,6 +396,18 @@ def build_instructions(
         # =================================================
 
         "DEVICE CAPABILITIES:\n\n"
+        
+        "Use control_flashlight when the user asks to "
+        "turn the phone flashlight on or off.\n\n"
+
+        "Use get_battery_status when the user asks "
+        "about battery percentage or charging status.\n\n"
+
+        "Use open_app when the user asks to launch "
+        "an installed Android application.\n\n"
+
+        "Never claim a device action succeeded before "
+        "receiving its successful capability result.\n\n"
 
         "The user's device can provide capabilities such "
         "as current location.\n\n"
@@ -608,6 +668,37 @@ async def _process_response(
                         app_name,
                 },
             )
+
+        
+        
+        elif tool_call.name in ("control_flashlight", "get_battery_status"):
+            arguments = json.loads(tool_call.arguments)
+
+            if tool_call.name == "control_flashlight":
+                capability = "flashlight"
+                parameters = {"action": arguments["action"]}
+                reason = f"Turn flashlight {arguments['action']}."
+            else:
+                capability = "battery_status"
+                parameters = {}
+                reason = "Check device battery status."
+
+            request_id = str(uuid4())
+
+            capability_service.create_request(
+                request_id=request_id,
+                capability=capability,
+                response_id=response.id,
+                call_id=tool_call.call_id,
+            )
+
+            return CapabilityRequest(
+                request_id=request_id,
+                capability=capability,
+                reason=reason,
+                parameters=parameters,
+            )
+
 
         # =============================================
         # TIME

@@ -3,15 +3,32 @@ from uuid import uuid4
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.models.capability import CapabilityResult
-from app.models.capability import CapabilityRequest
-from app.services.ai_service import continue_after_capability
-from app.services.ai_service import generate_response
-from app.services.conversation_service import conversation_service
-from app.services.profile_service import profile_service
+from app.models.capability import (
+    CapabilityRequest,
+    CapabilityResult,
+)
+
+from app.services.ai_service import (
+    continue_after_capability,
+    generate_response,
+)
+
+from app.services.capability_service import (
+    capability_service,
+)
+
+from app.services.conversation_service import (
+    conversation_service,
+)
+
+from app.services.profile_service import (
+    profile_service,
+)
 
 
-router = APIRouter(prefix="/api")
+router = APIRouter(
+    prefix="/api"
+)
 
 
 # =========================================================
@@ -40,14 +57,19 @@ async def chat(
     print("========================================")
     print("CHAT REQUEST RECEIVED")
     print("========================================")
-    print("USER ID:", request.user_id)
-    print("MESSAGE:", request.message)
+    print(
+        "USER ID:",
+        request.user_id,
+    )
+    print(
+        "MESSAGE:",
+        request.message,
+    )
     print(
         "CONVERSATION ID:",
         request.conversation_id,
     )
     print("========================================")
-
 
     # -----------------------------------------------------
     # CONVERSATION
@@ -63,24 +85,32 @@ async def chat(
             uuid4()
         )
 
-    history = conversation_service.get_history(
-        conversation_id
+    history = (
+        conversation_service.get_history(
+            conversation_id
+        )
     )
-
 
     # -----------------------------------------------------
     # PROFILE
     # -----------------------------------------------------
 
-    profile = profile_service.get_profile(
-        request.user_id
+    profile = (
+        profile_service.get_profile(
+            request.user_id
+        )
     )
 
     print("\n")
-    print("******** PROFILE DEBUG ********")
-    print(profile.model_dump())
-    print("********************************")
-
+    print(
+        "******** PROFILE DEBUG ********"
+    )
+    print(
+        profile.model_dump()
+    )
+    print(
+        "********************************"
+    )
 
     # -----------------------------------------------------
     # AI
@@ -95,7 +125,6 @@ async def chat(
         user_profile=profile.model_dump(),
     )
 
-
     # -----------------------------------------------------
     # CAPABILITY REQUEST
     # -----------------------------------------------------
@@ -106,7 +135,9 @@ async def chat(
     ):
 
         print("\n")
-        print("******** CAPABILITY REQUEST ********")
+        print(
+            "******** CAPABILITY REQUEST ********"
+        )
         print(
             "REQUEST ID:",
             result.request_id,
@@ -119,11 +150,36 @@ async def chat(
             "REASON:",
             result.reason,
         )
-        print("************************************")
+        print(
+            "PARAMETERS:",
+            result.parameters,
+        )
+        print(
+            "************************************"
+        )
 
+        # -------------------------------------------------
+        # IMPORTANT
+        #
+        # Remember which conversation caused this
+        # capability request.
+        # -------------------------------------------------
+
+        capability_service.attach_conversation(
+
+            request_id=result.request_id,
+
+            conversation_id=conversation_id,
+
+            user_message=request.message,
+
+            user_id=request.user_id,
+        )
 
         return {
-            "type": "capability_request",
+
+            "type":
+                "capability_request",
 
             "conversation_id":
                 conversation_id,
@@ -136,8 +192,10 @@ async def chat(
 
             "reason":
                 result.reason,
-        }
 
+            "parameters":
+                result.parameters,
+        }
 
     # -----------------------------------------------------
     # NORMAL RESPONSE
@@ -145,27 +203,52 @@ async def chat(
 
     response_text = result
 
-
     # -----------------------------------------------------
     # SAVE CONVERSATION
     # -----------------------------------------------------
 
     conversation_service.add_message(
+
         session_id=conversation_id,
+
         role="user",
+
         content=request.message,
     )
 
     conversation_service.add_message(
+
         session_id=conversation_id,
+
         role="assistant",
+
         content=response_text,
     )
 
+    print("\n")
+    print(
+        "******** CONVERSATION SAVED ********"
+    )
+    print(
+        "CONVERSATION ID:",
+        conversation_id,
+    )
+    print(
+        "USER:",
+        request.message,
+    )
+    print(
+        "NOVA:",
+        response_text,
+    )
+    print(
+        "************************************"
+    )
 
     return {
 
-        "type": "response",
+        "type":
+            "response",
 
         "response":
             response_text,
@@ -202,23 +285,106 @@ async def capability_result(
     )
     print("========================================")
 
+    # -----------------------------------------------------
+    # GET PENDING REQUEST BEFORE CONTINUATION
+    #
+    # continue_after_capability removes the pending
+    # request after completion, so we need the conversation
+    # information first.
+    # -----------------------------------------------------
+
+    pending = (
+        capability_service.get_request(
+            request.request_id
+        )
+    )
+
+    if pending is None:
+
+        raise ValueError(
+            "Capability request was not found."
+        )
+
+    conversation_id = (
+        pending.conversation_id
+    )
+
+    user_message = (
+        pending.user_message
+    )
 
     # -----------------------------------------------------
     # CONTINUE AI
     # -----------------------------------------------------
 
-    response = await continue_after_capability(
+    response = (
+        await continue_after_capability(
 
-        request_id=request.request_id,
+            request_id=request.request_id,
 
-        capability_data=request.data,
+            capability_data=request.data,
+        )
     )
 
+    # -----------------------------------------------------
+    # SAVE COMPLETED CAPABILITY CONVERSATION
+    # -----------------------------------------------------
+
+    if (
+        conversation_id
+        and user_message
+    ):
+
+        conversation_service.add_message(
+
+            session_id=conversation_id,
+
+            role="user",
+
+            content=user_message,
+        )
+
+        conversation_service.add_message(
+
+            session_id=conversation_id,
+
+            role="assistant",
+
+            content=response,
+        )
+
+        print("\n")
+        print(
+            "***** CAPABILITY CONVERSATION SAVED *****"
+        )
+        print(
+            "CONVERSATION ID:",
+            conversation_id,
+        )
+        print(
+            "USER:",
+            user_message,
+        )
+        print(
+            "NOVA:",
+            response,
+        )
+        print(
+            "*****************************************"
+        )
+
+    # -----------------------------------------------------
+    # RESPONSE
+    # -----------------------------------------------------
 
     return {
 
-        "type": "response",
+        "type":
+            "response",
 
         "response":
             response,
+
+        "conversation_id":
+            conversation_id,
     }

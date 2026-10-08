@@ -1,5 +1,6 @@
 import json
 import os
+
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -7,7 +8,6 @@ from openai import OpenAI
 
 from app.models.capability import CapabilityRequest
 from app.services.capability_service import capability_service
-from app.services.time_service import get_current_datetime
 from app.tools.location_tool import find_location
 from app.tools.search_tool import search_web
 from app.tools.time_tool import get_current_time
@@ -58,6 +58,45 @@ current_location_tool = {
             },
         },
         "required": [
+            "reason",
+        ],
+        "additionalProperties": False,
+    },
+}
+
+# =========================================================
+# OPENING TOOL
+# =========================================================
+
+open_app_tool = {
+    "type": "function",
+    "name": "open_app",
+    "description": (
+        "Open an application installed on the user's "
+        "Android device. Use this when the user asks to "
+        "open, launch, or start an app."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "app_name": {
+                "type": "string",
+                "description": (
+                    "The human-readable name of the app "
+                    "the user wants to open, such as "
+                    "WhatsApp, YouTube, Chrome, Spotify, "
+                    "Instagram, Gmail, or Maps."
+                ),
+            },
+            "reason": {
+                "type": "string",
+                "description": (
+                    "Why NOVA needs to open the app."
+                ),
+            },
+        },
+        "required": [
+            "app_name",
             "reason",
         ],
         "additionalProperties": False,
@@ -184,11 +223,33 @@ search_tool = {
 
 tools = [
     current_location_tool,
+    open_app_tool,
     time_tool,
     weather_tool,
     location_tool,
     search_tool,
 ]
+
+
+# =========================================================
+# VOICE RESPONSE RULES
+# =========================================================
+
+VOICE_RESPONSE_RULES = (
+    "VOICE RESPONSE RULES:\n"
+    "Keep responses concise, natural, and easy to speak aloud.\n"
+    "Usually use 1-3 sentences.\n"
+    "Use one sentence when one sentence is enough.\n"
+    "Do not repeat the user's question.\n"
+    "Avoid unnecessary filler.\n"
+    "Respond in plain spoken text only.\n"
+    "Never use Markdown formatting.\n"
+    "Never use asterisks, hashtags, headings, bullet symbols, "
+    "backticks, or Markdown emphasis.\n"
+    "Do not use bold, italic, or other formatting syntax.\n"
+    "Responses will be spoken aloud using text-to-speech.\n"
+    "Write exactly as a person should naturally say the response.\n"
+)
 
 
 # =========================================================
@@ -253,16 +314,11 @@ def build_instructions(
         )
 
     return (
-
         "You are NOVA, a mobile AI voice assistant.\n\n"
 
-        "RESPONSE STYLE:\n"
-        "Keep responses concise, natural, and easy to "
-        "speak aloud.\n"
-        "Usually use 1-3 sentences.\n"
-        "Do not repeat the user's question.\n"
-        "Avoid unnecessary filler.\n\n"
+        + VOICE_RESPONSE_RULES
 
+        + "\n"
 
         # =================================================
         # PERSONAL INFORMATION
@@ -287,7 +343,6 @@ def build_instructions(
         "If the user asks 'Where am I?', you need the "
         "current device location capability.\n\n"
 
-
         # =================================================
         # DEVICE CAPABILITIES
         # =================================================
@@ -307,7 +362,6 @@ def build_instructions(
         "Do NOT use home location as a substitute for "
         "current location.\n\n"
 
-
         # =================================================
         # LOCATION RULES
         # =================================================
@@ -318,19 +372,21 @@ def build_instructions(
         "current device location.\n\n"
 
         "For example:\n"
+
         "'What's the weather in Lahore?'\n"
-        "→ Use find_location for Lahore.\n"
-        "→ Then use get_weather.\n\n"
+        "Use find_location for Lahore.\n"
+        "Then use get_weather.\n\n"
 
         "For:\n"
+
         "'What's the weather?'\n"
-        "→ Request current device location.\n"
-        "→ Then use get_weather.\n\n"
+        "Request current device location.\n"
+        "Then use get_weather.\n\n"
 
         "For:\n"
-        "'Where am I?'\n"
-        "→ Request current device location.\n\n"
 
+        "'Where am I?'\n"
+        "Request current device location.\n\n"
 
         # =================================================
         # WEATHER
@@ -346,7 +402,6 @@ def build_instructions(
 
         "After receiving coordinates, use get_weather.\n\n"
 
-
         # =================================================
         # TIME
         # =================================================
@@ -356,7 +411,6 @@ def build_instructions(
         "For current date, current time, today, tomorrow, "
         "yesterday, or day-of-week questions, use "
         "get_current_time.\n\n"
-
 
         # =================================================
         # SEARCH
@@ -371,7 +425,6 @@ def build_instructions(
         "current cybersecurity threats, current sports "
         "results, current prices, or when the user "
         "explicitly asks to search the web.\n\n"
-
 
         # =================================================
         # INTERNAL
@@ -479,7 +532,6 @@ async def _process_response(
 
         return response.output_text
 
-
     tool_outputs = []
 
     for tool_call in tool_calls:
@@ -499,7 +551,9 @@ async def _process_response(
                 "NOVA needs the user's current location.",
             )
 
-            request_id = str(uuid4())
+            request_id = str(
+                uuid4()
+            )
 
             capability_service.create_request(
                 request_id=request_id,
@@ -514,6 +568,46 @@ async def _process_response(
                 reason=reason,
             )
 
+
+        # =============================================
+        # OPEN APP CAPABILITY
+        # =============================================
+
+        elif tool_call.name == "open_app":
+
+            arguments = json.loads(
+                tool_call.arguments
+            )
+
+            app_name = arguments[
+                "app_name"
+            ]
+
+            reason = arguments.get(
+                "reason",
+                f"Open {app_name}.",
+            )
+
+            request_id = str(
+                uuid4()
+            )
+
+            capability_service.create_request(
+                request_id=request_id,
+                capability="open_app",
+                response_id=response.id,
+                call_id=tool_call.call_id,
+            )
+
+            return CapabilityRequest(
+                request_id=request_id,
+                capability="open_app",
+                reason=reason,
+                parameters={
+                    "app_name":
+                        app_name,
+                },
+            )
 
         # =============================================
         # TIME
@@ -531,7 +625,6 @@ async def _process_response(
                 }
             )
 
-
         # =============================================
         # LOCATION
         # =============================================
@@ -542,7 +635,9 @@ async def _process_response(
                 tool_call.arguments
             )
 
-            location = arguments["location"]
+            location = arguments[
+                "location"
+            ]
 
             try:
 
@@ -554,7 +649,9 @@ async def _process_response(
                     {
                         "type": "function_call_output",
                         "call_id": tool_call.call_id,
-                        "output": json.dumps(result),
+                        "output": json.dumps(
+                            result
+                        ),
                     }
                 )
 
@@ -571,7 +668,6 @@ async def _process_response(
                         ),
                     }
                 )
-
 
         # =============================================
         # WEATHER
@@ -620,7 +716,6 @@ async def _process_response(
                     }
                 )
 
-
         # =============================================
         # WEB SEARCH
         # =============================================
@@ -631,7 +726,9 @@ async def _process_response(
                 tool_call.arguments
             )
 
-            query = arguments["query"]
+            query = arguments[
+                "query"
+            ]
 
             try:
 
@@ -661,7 +758,6 @@ async def _process_response(
                     }
                 )
 
-
     # =====================================================
     # CONTINUE AFTER NORMAL TOOLS
     # =====================================================
@@ -682,9 +778,9 @@ async def _process_response(
                 "Use the returned tool information to "
                 "answer the user's original question.\n\n"
 
-                "Keep the answer concise and natural "
-                "because NOVA speaks aloud.\n\n"
+                + VOICE_RESPONSE_RULES
 
+                + "\n"
                 "Never mention internal tools or "
                 "implementation details."
             ),
@@ -716,12 +812,6 @@ async def continue_after_capability(
             "Capability request was not found."
         )
 
-    if pending.capability != "current_location":
-
-        raise ValueError(
-            f"Unsupported capability: "
-            f"{pending.capability}"
-        )
 
     tool_output = {
         "type": "function_call_output",
@@ -746,23 +836,26 @@ async def continue_after_capability(
             tools=tools,
 
             instructions=(
-                "The device has provided the user's "
-                "current physical location.\n\n"
+                "The user's device has completed the requested "
+                "device capability.\n\n"
 
-                "Use the location data to answer the "
+                "Use the returned capability result to answer the "
                 "user's original request.\n\n"
 
-                "If the user asked where they are, "
-                "identify the location naturally.\n\n"
+                "If success is true, briefly confirm the action "
+                "when confirmation is useful.\n\n"
 
-                "If the user asked for weather without "
-                "specifying a location, use the returned "
-                "coordinates with get_weather.\n\n"
+                "If success is false, explain naturally that the "
+                "requested action could not be completed.\n\n"
 
-                "Keep the response concise and natural.\n\n"
+                "For location results, use the returned coordinates "
+                "as needed for the user's original request.\n\n"
 
-                "Do not mention internal tools, "
-                "capabilities, APIs, or implementation."
+                + VOICE_RESPONSE_RULES
+
+                + "\n"
+                "Do not mention internal tools, capabilities, APIs, "
+                "function calls, or implementation details."
             ),
         )
 

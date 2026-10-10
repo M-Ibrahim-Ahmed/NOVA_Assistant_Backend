@@ -31,8 +31,15 @@ from app.tools.weather_tool import (
     get_last_weather_result,
 )
 
+from app.tools.time_tool import (
+    clear_time_result,
+    get_last_time_result,
+)
 
-router = APIRouter(prefix="/api")
+
+router = APIRouter(
+    prefix="/api"
+)
 
 
 # =========================================================
@@ -50,17 +57,30 @@ class ChatRequest(BaseModel):
 # =========================================================
 
 @router.post("/chat")
-async def chat(request: ChatRequest):
+async def chat(
+    request: ChatRequest,
+):
 
-    # Start with no weather card for this request.
+    # Clear previous card information for this request.
     clear_weather_result()
+    clear_time_result()
 
-    print("\n========================================")
+    print("\n")
+    print("========================================")
     print("CHAT REQUEST RECEIVED")
     print("========================================")
-    print("USER ID:", request.user_id)
-    print("MESSAGE:", request.message)
-    print("CONVERSATION ID:", request.conversation_id)
+    print(
+        "USER ID:",
+        request.user_id,
+    )
+    print(
+        "MESSAGE:",
+        request.message,
+    )
+    print(
+        "CONVERSATION ID:",
+        request.conversation_id,
+    )
     print("========================================")
 
     # -----------------------------------------------------
@@ -70,7 +90,9 @@ async def chat(request: ChatRequest):
     conversation_id = request.conversation_id
 
     if not conversation_id:
-        conversation_id = str(uuid4())
+        conversation_id = str(
+            uuid4()
+        )
 
     history = conversation_service.get_history(
         conversation_id
@@ -86,12 +108,13 @@ async def chat(request: ChatRequest):
 
     profile_data = profile.model_dump()
 
-    print("\n******** PROFILE DEBUG ********")
+    print("\n")
+    print("******** PROFILE DEBUG ********")
     print(profile_data)
     print("********************************")
 
     # -----------------------------------------------------
-    # GENERATE RESPONSE
+    # GENERATE AI RESPONSE
     # -----------------------------------------------------
 
     result = await generate_response(
@@ -104,14 +127,33 @@ async def chat(request: ChatRequest):
     # DEVICE CAPABILITY REQUEST
     # -----------------------------------------------------
 
-    if isinstance(result, CapabilityRequest):
+    if isinstance(
+        result,
+        CapabilityRequest,
+    ):
 
-        print("\n******** CAPABILITY REQUEST ********")
-        print("REQUEST ID:", result.request_id)
-        print("CAPABILITY:", result.capability)
-        print("REASON:", result.reason)
-        print("PARAMETERS:", result.parameters)
+        print("\n")
+        print("******** CAPABILITY REQUEST ********")
+        print(
+            "REQUEST ID:",
+            result.request_id,
+        )
+        print(
+            "CAPABILITY:",
+            result.capability,
+        )
+        print(
+            "REASON:",
+            result.reason,
+        )
+        print(
+            "PARAMETERS:",
+            result.parameters,
+        )
         print("************************************")
+
+        # Remember which conversation caused
+        # this device capability request.
 
         capability_service.attach_conversation(
             request_id=result.request_id,
@@ -135,6 +177,10 @@ async def chat(request: ChatRequest):
 
     response_text = result
 
+    # -----------------------------------------------------
+    # SAVE CONVERSATION
+    # -----------------------------------------------------
+
     conversation_service.add_message(
         session_id=conversation_id,
         role="user",
@@ -147,22 +193,47 @@ async def chat(request: ChatRequest):
         content=response_text,
     )
 
-    # Weather data is available only if the weather
-    # tool ran successfully during this request.
-    weather_data = get_last_weather_result()
+    # -----------------------------------------------------
+    # STRUCTURED CARD INFORMATION
+    # -----------------------------------------------------
 
-    print("\n******** CONVERSATION SAVED ********")
-    print("CONVERSATION ID:", conversation_id)
-    print("USER:", request.message)
-    print("NOVA:", response_text)
-    print("WEATHER CARD:", weather_data is not None)
+    weather_data = get_last_weather_result()
+    time_data = get_last_time_result()
+
+    print("\n")
+    print("******** CONVERSATION SAVED ********")
+    print(
+        "CONVERSATION ID:",
+        conversation_id,
+    )
+    print(
+        "USER:",
+        request.message,
+    )
+    print(
+        "NOVA:",
+        response_text,
+    )
+    print(
+        "WEATHER CARD:",
+        weather_data is not None,
+    )
+    print(
+        "TIME CARD AVAILABLE:",
+        time_data is not None,
+    )
     print("************************************")
+
+    # -----------------------------------------------------
+    # RESPONSE
+    # -----------------------------------------------------
 
     return {
         "type": "response",
         "response": response_text,
         "conversation_id": conversation_id,
         "weather": weather_data,
+        "time": time_data,
     }
 
 
@@ -175,21 +246,37 @@ async def capability_result(
     request: CapabilityResult,
 ):
 
-    # A capability continuation is a separate HTTP
-    # request. Give it its own weather data.
-    clear_weather_result()
+    # Each capability continuation is a separate
+    # HTTP request, so reset its card information.
 
-    print("\n========================================")
+    clear_weather_result()
+    clear_time_result()
+
+    print("\n")
+    print("========================================")
     print("CAPABILITY RESULT RECEIVED")
     print("========================================")
-    print("REQUEST ID:", request.request_id)
-    print("CAPABILITY:", request.capability)
-    print("DATA:", request.data)
+    print(
+        "REQUEST ID:",
+        request.request_id,
+    )
+    print(
+        "CAPABILITY:",
+        request.capability,
+    )
+    print(
+        "DATA:",
+        request.data,
+    )
     print("========================================")
 
     # -----------------------------------------------------
     # GET PENDING CAPABILITY
     # -----------------------------------------------------
+
+    # Read the conversation information before calling
+    # continue_after_capability(), because that function
+    # removes the pending capability request.
 
     pending = capability_service.get_request(
         request.request_id
@@ -200,8 +287,6 @@ async def capability_result(
             "Capability request was not found."
         )
 
-    # Read this before continue_after_capability(),
-    # because the continuation removes the request.
     conversation_id = pending.conversation_id
     user_message = pending.user_message
 
@@ -232,23 +317,39 @@ async def capability_result(
             content=response,
         )
 
+        print("\n")
         print(
-            "\n***** CAPABILITY CONVERSATION SAVED *****"
+            "***** CAPABILITY CONVERSATION SAVED *****"
         )
-        print("CONVERSATION ID:", conversation_id)
-        print("USER:", user_message)
-        print("NOVA:", response)
+        print(
+            "CONVERSATION ID:",
+            conversation_id,
+        )
+        print(
+            "USER:",
+            user_message,
+        )
+        print(
+            "NOVA:",
+            response,
+        )
         print("*****************************************")
 
     # -----------------------------------------------------
-    # WEATHER INFORMATION
+    # STRUCTURED CARD INFORMATION
     # -----------------------------------------------------
 
     weather_data = get_last_weather_result()
+    time_data = get_last_time_result()
 
     print(
         "WEATHER CARD AVAILABLE:",
         weather_data is not None,
+    )
+
+    print(
+        "TIME CARD AVAILABLE:",
+        time_data is not None,
     )
 
     # -----------------------------------------------------
@@ -260,4 +361,5 @@ async def capability_result(
         "response": response,
         "conversation_id": conversation_id,
         "weather": weather_data,
+        "time": time_data,
     }
